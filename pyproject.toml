@@ -40,7 +40,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-eva_core = ["web/*.html"]
+eva_core = ["web/*.html", "web/widgets/*.html", "web/widgets/*.js"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
