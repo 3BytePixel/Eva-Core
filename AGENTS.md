@@ -2,10 +2,16 @@
 
 ## Project
 
-Eva-Core is a FastAPI service exposing a unified chat API across OpenAI, x.ai
-(Grok), Google GenAI (Gemini), and Anthropic Claude, plus Azure Cognitive
-Services Speech (TTS/STT). Source lives under `src/eva_core/`; tests under
-`tests/`. Standard commands are documented in `README.md`.
+This repo contains two independent products:
+
+- **Eva-Core** — a FastAPI service exposing a unified chat API across OpenAI,
+ x.ai (Grok), Google GenAI (Gemini), and Anthropic Claude, plus Azure Cognitive
+ Services Speech (TTS/STT). Source lives under `src/eva_core/`; tests under
+ `tests/`. Standard commands are documented in `README.md`.
+- **playwright-scraper** — a small Node/TypeScript (pnpm) CLI under
+ `playwright-scraper/` that drives a local headless Chromium to scrape a page
+ title / CSS-selector text and optionally save a screenshot. Standard commands
+ are documented in `playwright-scraper/README.md`.
 
 ## Cursor Cloud specific instructions
 
@@ -24,5 +30,17 @@ Services Speech (TTS/STT). Source lives under `src/eva_core/`; tests under
   `OPENAI_BASE_URL=http://127.0.0.1:<port>/v1`. The x.ai provider is also
   OpenAI-compatible (`XAI_BASE_URL` defaults to `https://api.x.ai/v1`).
 - Real provider/speech calls need secrets: `OPENAI_API_KEY`, `XAI_API_KEY`,
-  `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `AZURE_SPEECH_KEY` +
-  `AZURE_SPEECH_REGION`. Put them in `.env` (gitignored) or the environment.
+ `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `AZURE_SPEECH_KEY` +
+ `AZURE_SPEECH_REGION`. Put them in `.env` (gitignored) or the environment.
+
+### playwright-scraper
+
+- Node + pnpm project; deps and the Chromium browser binary are installed by the
+ update script (`pnpm install` + `playwright install chromium`). Run all
+ commands from `playwright-scraper/` (or `pnpm -C playwright-scraper ...`).
+- Lint/typecheck: `pnpm typecheck`. Smoke test: `pnpm test` (launches Chromium
+ against `https://example.com`, so it needs outbound network). Run the CLI with
+ `pnpm scrape <url> [--selector <css>] [--screenshot <path>]`.
+- Chromium runs headless and needs no credentials. The bundled Chromium's OS
+ libraries are already present in this environment; if a future image is missing
+ them, run `pnpm exec playwright install-deps chromium` (uses apt).
