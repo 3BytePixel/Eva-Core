@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Eva-Core · Multi-Provider Chat</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 70% -10%, #1f2a44, #0b1020 60%);
+    color: #e8ecf5; min-height: 100vh;
+  }
+  header { padding: 20px 24px; border-bottom: 1px solid #21294013; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
+  .sub { color: #9aa6c2; font-size: 13px; margin-top: 4px; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 20px 16px 40px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  select, input, textarea, button {
+    font: inherit; border-radius: 10px; border: 1px solid #2c3658;
+    background: #131a30; color: #e8ecf5; padding: 10px 12px;
+  }
+  textarea { width: 100%; min-height: 70px; resize: vertical; }
+  button {
+    cursor: pointer; background: linear-gradient(180deg,#3b82f6,#2563eb);
+    border: none; font-weight: 600;
+  }
+  button.secondary { background: #1d2742; border: 1px solid #2c3658; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .pill { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2c3658; }
+  .ok { color: #6ee7b7; border-color: #14532d; }
+  .off { color: #fca5a5; border-color: #7f1d1d; }
+  #log { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+  .msg { padding: 12px 14px; border-radius: 12px; white-space: pre-wrap; line-height: 1.45; }
+  .user { background: #1e3a8a33; border: 1px solid #1e40af55; align-self: flex-end; max-width: 80%; }
+  .bot { background: #11182e; border: 1px solid #2c3658; align-self: flex-start; max-width: 90%; }
+  .who { font-size: 11px; color: #9aa6c2; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px; }
+  .err { color: #fca5a5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Eva-Core</h1>
+  <div class="sub">Unified chat across OpenAI · x.ai (Grok) · Gemini · Claude · Azure Speech</div>
+</header>
+<div class="wrap">
+  <div class="row">
+    <label for="provider">Provider</label>
+    <select id="provider"></select>
+    <span id="status" class="row" style="gap:6px;"></span>
+  </div>
+  <div class="row">
+    <input id="system" placeholder="System prompt (optional)" style="flex:1; min-width:240px;" />
+  </div>
+  <div class="row">
+    <textarea id="input" placeholder="Type a message and press Send (Ctrl/Cmd+Enter)"></textarea>
+  </div>
+  <div class="row">
+    <button id="send">Send</button>
+    <button id="speak" class="secondary" title="Speak last reply via Azure TTS">🔊 Speak reply</button>
+    <button id="clear" class="secondary">Clear</button>
+  </div>
+  <div id="log"></div>
+</div>
+<audio id="player" hidden></audio>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+let history = [];
+let lastReply = "";
+
+function add(role, text, cls) {
+  const div = document.createElement("div");
+  div.className = "msg " + (cls || (role === "user" ? "user" : "bot"));
+  div.innerHTML = '<div class="who">' + role + '</div>';
+  const body = document.createElement("div");
+  body.textContent = text;
+  div.appendChild(body);
+  log.appendChild(div);
+  div.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+async function loadStatus() {
+  const res = await fetch("/api/status");
+  const data = await res.json();
+  const sel = $("provider");
+  sel.innerHTML = "";
+  for (const p of data.providers) {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.label + (p.available ? "" : " (no key)");
+    opt.disabled = !p.available;
+    sel.appendChild(opt);
+  }
+  const firstAvail = data.providers.find((p) => p.available);
+  if (firstAvail) sel.value = firstAvail.name;
+  const s = $("status");
+  const speech = data.speech.available;
+  s.innerHTML =
+    '<span class="pill ' + (speech ? "ok" : "off") + '">Azure Speech: ' +
+    (speech ? "ready" : "no key") + "</span>";
+  $("speak").disabled = !speech;
+}
+
+async function send() {
+  const text = $("input").value.trim();
+  if (!text) return;
+  const provider = $("provider").value;
+  if (!provider) { add("system", "No provider available. Configure an API key.", "bot err"); return; }
+  const system = $("system").value.trim();
+  add("user", text);
+  history.push({ role: "user", content: text });
+  $("input").value = "";
+  $("send").disabled = true;
+
+  const messages = [];
+  if (system) messages.push({ role: "system", content: system });
+  messages.push(...history);
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, messages }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Request failed");
+    lastReply = data.content;
+    history.push({ role: "assistant", content: data.content });
+    add(data.provider + " · " + data.model, data.content);
+  } catch (e) {
+    add("error", e.message, "bot err");
+  } finally {
+    $("send").disabled = false;
+  }
+}
+
+async function speak() {
+  if (!lastReply) return;
+  $("speak").disabled = true;
+  try {
+    const res = await fetch("/api/speech/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: lastReply }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "TTS failed");
+    const player = $("player");
+    player.src = "data:" + data.content_type + ";base64," + data.audio_base64;
+    player.play();
+  } catch (e) {
+    add("error", e.message, "bot err");
+  } finally {
+    $("speak").disabled = false;
+  }
+}
+
+$("send").addEventListener("click", send);
+$("speak").addEventListener("click", speak);
+$("clear").addEventListener("click", () => { history = []; lastReply = ""; log.innerHTML = ""; });
+$("input").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") send();
+});
+loadStatus();
+</script>
+</body>
+</html>
