@@ -20,6 +20,7 @@ Run it with ``eva-core-mcp`` (console script) or ``python -m eva_core.mcp_server
 
 from __future__ import annotations
 
+import base64
 import os
 import tempfile
 from pathlib import Path
@@ -33,6 +34,13 @@ from eva_core import __version__
 from eva_core.providers import ChatMessage, ProviderError
 from eva_core.service import EvaCore
 from eva_core.speech import SpeechError
+from eva_core.widgets import (
+    PROVIDER_DASHBOARD_URI,
+    TTS_PLAYER_URI,
+    register_widgets,
+    ui_app_only_meta,
+    ui_tool_meta,
+)
 
 INSTRUCTIONS = """\
 Eva-Core exposes a unified chat interface across OpenAI, x.ai (Grok), Google
@@ -60,13 +68,17 @@ def build_mcp(core: EvaCore | None = None) -> FastMCP:
     core = core or EvaCore()
     mcp: FastMCP = FastMCP(name=f"Eva-Core v{__version__}", instructions=INSTRUCTIONS)
 
-    @mcp.tool
+    @mcp.tool(meta=ui_tool_meta(PROVIDER_DASHBOARD_URI))
     def list_providers() -> dict:
         """List chat providers and speech support with their availability.
 
         A backend is only ``available`` when its credentials are configured.
         Use this to pick a ``provider`` for `chat` or to check whether speech
         tools will work before calling them.
+
+        Renders an interactive provider dashboard: a card per backend showing
+        ready/no-key status, with a button to start a chat against an available
+        provider. Hosts without UI support see the same data as JSON.
         """
         return core.status()
 
@@ -109,7 +121,7 @@ def build_mcp(core: EvaCore | None = None) -> FastMCP:
             raise ToolError(f"Provider call failed: {exc}") from exc
         return {"provider": result.provider, "model": result.model, "content": result.content}
 
-    @mcp.tool
+    @mcp.tool(meta=ui_tool_meta(TTS_PLAYER_URI))
     def text_to_speech(
         text: Annotated[str, Field(description="Text to synthesize.")],
         output_path: Annotated[
@@ -125,6 +137,10 @@ def build_mcp(core: EvaCore | None = None) -> FastMCP:
 
         Audio is written to disk (not returned inline) so large clips don't
         bloat the conversation. Returns the file path and byte count.
+
+        Renders an inline audio player with play and download controls; the
+        player fetches the WAV bytes on demand via `get_audio_data`, so the
+        conversation only carries the lightweight path/metadata.
         """
         if not text.strip():
             raise ToolError("`text` must not be empty.")
@@ -143,7 +159,33 @@ def build_mcp(core: EvaCore | None = None) -> FastMCP:
             os.close(fd)
             path = Path(tmp_name)
         path.write_bytes(audio)
-        return {"path": str(path), "bytes": len(audio), "content_type": "audio/wav"}
+        return {
+            "path": str(path),
+            "bytes": len(audio),
+            "content_type": "audio/wav",
+            "text": text,
+            "voice": voice or core.settings.azure_speech_voice,
+        }
+
+    @mcp.tool(meta=ui_app_only_meta())
+    def get_audio_data(
+        path: Annotated[str, Field(description="Path to a WAV file written by `text_to_speech`.")],
+    ) -> dict:
+        """Return a WAV file's bytes as base64 for inline playback.
+
+        App-only helper for the TTS player widget — hidden from the model so
+        Claude never pulls raw audio into the conversation. Reads only files
+        under the system temp dir or an explicit `text_to_speech` output path.
+        """
+        wav = Path(path).expanduser()
+        if not wav.is_file():
+            raise ToolError(f"Audio file not found: {wav}")
+        data = wav.read_bytes()
+        return {
+            "audio_base64": base64.b64encode(data).decode("ascii"),
+            "content_type": "audio/wav",
+            "bytes": len(data),
+        }
 
     @mcp.tool
     def speech_to_text(
@@ -161,6 +203,7 @@ def build_mcp(core: EvaCore | None = None) -> FastMCP:
             raise ToolError(f"STT failed: {exc}") from exc
         return {"text": text}
 
+    register_widgets(mcp)
     return mcp
 
 

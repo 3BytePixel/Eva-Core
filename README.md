@@ -85,6 +85,23 @@ backends report `available: false` and their tools return a clear error.
 For remote/shared use, set `EVA_MCP_TRANSPORT=http` (with optional
 `EVA_MCP_HOST`, `EVA_MCP_PORT`, `EVA_MCP_PATH`).
 
+### Interactive widgets (MCP Apps)
+
+`list_providers` and `text_to_speech` ship inline UI that renders in hosts
+implementing the MCP apps surface (claude.ai, Claude Desktop) — a provider
+status dashboard with per-backend "Chat" buttons, and an audio player for
+synthesized speech. Hosts without UI support ignore the hints and use the
+tools' JSON, so the data path is unchanged.
+
+The widgets live in [`src/eva_core/web/widgets/`](src/eva_core/web/widgets/)
+and are wired up in [`widgets.py`](src/eva_core/widgets.py). The audio player
+keeps WAV bytes out of the conversation by fetching them on demand from
+`get_audio_data`, an app-only helper tool hidden from the model. The vendored
+`ext-apps-bundle.js` is the [`@modelcontextprotocol/ext-apps`](https://github.com/modelcontextprotocol/ext-apps)
+browser runtime, inlined into each widget because the iframe CSP blocks CDN
+fetches; refresh it with `npm i @modelcontextprotocol/ext-apps` and copy
+`dist/src/app-with-deps.js` over the vendored file.
+
 ## Configuration
 
 All settings come from environment variables (or a `.env` file). See

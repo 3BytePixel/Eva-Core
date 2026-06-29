@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Eva-Core · Speech</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: transparent;
+    --fg: #1a2233;
+    --muted: #5b6478;
+    --card: #ffffff;
+    --card-border: #e3e7ef;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --err: #b91c1c;
+  }
+  :root.dark {
+    color-scheme: dark;
+    --fg: #e8ecf5;
+    --muted: #9aa6c2;
+    --card: #131a30;
+    --card-border: #2c3658;
+    --err: #fca5a5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 4px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--fg); background: var(--bg);
+  }
+  .card {
+    border: 1px solid var(--card-border); border-radius: 14px;
+    background: var(--card); padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .quote {
+    font-size: 15px; line-height: 1.45; max-height: 7.5em; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .quote::before { content: "\201C"; }
+  .quote::after  { content: "\201D"; }
+  audio { width: 100%; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border: 1px solid var(--card-border);
+    border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--fg);
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .meta { font-size: 12px; color: var(--muted); }
+  .err { color: var(--err); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="quote" id="quote">Loading…</div>
+  <audio id="player" controls preload="none"></audio>
+  <div class="row">
+    <button class="primary" id="play">▶ Play</button>
+    <button id="download">Download WAV</button>
+    <span class="meta" id="meta"></span>
+  </div>
+  <div class="err" id="err"></div>
+</div>
+
+<script type="module">
+/*__EXT_APPS_BUNDLE__*/
+const { App } = globalThis.ExtApps;
+
+(async () => {
+  const app = new App({ name: "EvaTtsPlayer", version: "1.0.0" }, {}, { autoResize: true });
+  const $ = (id) => document.getElementById(id);
+  const player = $("player");
+  let dataUrl = null;
+  let result = null;
+
+  function applyTheme() {
+    document.documentElement.classList.toggle("dark", app.getHostContext()?.theme === "dark");
+  }
+  function setErr(msg) { $("err").textContent = msg || ""; }
+
+  function fmtBytes(n) {
+    if (!n && n !== 0) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // The text_to_speech tool returns only a path (keeps the WAV out of Claude's
+  // context). Fetch the actual bytes on demand from the app-only helper tool.
+  async function loadAudio() {
+    setErr("");
+    if (!result?.path) { setErr("No audio path in the result."); return; }
+    try {
+      const res = await app.callServerTool({
+        name: "get_audio_data",
+        arguments: { path: result.path },
+      });
+      const text = res?.content?.find((c) => c.type === "text")?.text;
+      if (!text) throw new Error("Helper returned no data.");
+      const data = JSON.parse(text);
+      dataUrl = "data:" + (data.content_type || "audio/wav") + ";base64," + data.audio_base64;
+      player.src = dataUrl;
+      return dataUrl;
+    } catch (e) {
+      setErr("Could not load audio: " + e.message);
+      return null;
+    }
+  }
+
+  function render() {
+    $("quote").textContent = result?.text || "(spoken clip)";
+    $("meta").textContent =
+      [result?.voice && "voice: " + result.voice, fmtBytes(result?.bytes)]
+        .filter(Boolean).join("  ·  ");
+  }
+
+  $("play").addEventListener("click", async () => {
+    if (!dataUrl && !(await loadAudio())) return;
+    player.play();
+  });
+
+  $("download").addEventListener("click", async () => {
+    if (!dataUrl && !(await loadAudio())) return;
+    const b64 = dataUrl.split(",")[1];
+    app.downloadFile({
+      name: "eva-speech.wav",
+      mimeType: result?.content_type || "audio/wav",
+      content: b64,
+    });
+  });
+
+  app.ontoolresult = ({ content }) => {
+    try {
+      const text = content?.find((c) => c.type === "text")?.text ?? "{}";
+      result = JSON.parse(text);
+      render();
+    } catch (e) {
+      setErr("Could not read TTS result.");
+    }
+  };
+  app.onhostcontextchanged = applyTheme;
+
+  await app.connect();
+  applyTheme();
+})();
+</script>
+</body>
+</html>

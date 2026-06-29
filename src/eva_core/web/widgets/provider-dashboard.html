@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Eva-Core · Providers</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: transparent;
+    --fg: #1a2233;
+    --muted: #5b6478;
+    --card: #ffffff;
+    --card-border: #e3e7ef;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --ok-fg: #047857;
+    --ok-bg: #ecfdf5;
+    --ok-border: #a7f3d0;
+    --off-fg: #b91c1c;
+    --off-bg: #fef2f2;
+    --off-border: #fecaca;
+  }
+  :root.dark {
+    color-scheme: dark;
+    --fg: #e8ecf5;
+    --muted: #9aa6c2;
+    --card: #131a30;
+    --card-border: #2c3658;
+    --ok-fg: #6ee7b7;
+    --ok-bg: #0c2a22;
+    --ok-border: #14532d;
+    --off-fg: #fca5a5;
+    --off-bg: #2a1414;
+    --off-border: #7f1d1d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 4px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--fg); background: var(--bg);
+  }
+  .grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  .card {
+    border: 1px solid var(--card-border); border-radius: 14px;
+    background: var(--card); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .name { font-size: 15px; font-weight: 650; }
+  .model { font-size: 12px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, monospace; }
+  .pill {
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .pill.ok  { color: var(--ok-fg);  background: var(--ok-bg);  border-color: var(--ok-border); }
+  .pill.off { color: var(--off-fg); background: var(--off-bg); border-color: var(--off-border); }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border: none; border-radius: 10px;
+    padding: 8px 12px; background: var(--accent); color: var(--accent-fg);
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .speech {
+    margin-top: 12px; font-size: 13px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .empty { color: var(--muted); font-size: 14px; padding: 16px 4px; }
+</style>
+</head>
+<body>
+<div class="grid" id="grid"></div>
+<div class="speech" id="speech"></div>
+
+<script type="module">
+/*__EXT_APPS_BUNDLE__*/
+const { App } = globalThis.ExtApps;
+
+(async () => {
+  const app = new App({ name: "EvaProviderDashboard", version: "1.0.0" }, {}, { autoResize: true });
+  const grid = document.getElementById("grid");
+  const speechEl = document.getElementById("speech");
+
+  function applyTheme() {
+    const theme = app.getHostContext()?.theme;
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }
+
+  function render(status) {
+    const providers = status?.providers ?? [];
+    grid.innerHTML = "";
+    if (!providers.length) {
+      grid.innerHTML = '<div class="empty">No providers reported.</div>';
+    }
+    for (const p of providers) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const top = document.createElement("div");
+      top.className = "top";
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = p.label || p.name;
+      const pill = document.createElement("span");
+      pill.className = "pill " + (p.available ? "ok" : "off");
+      pill.textContent = p.available ? "ready" : "no key";
+      top.append(name, pill);
+
+      const model = document.createElement("div");
+      model.className = "model";
+      model.textContent = p.model || "";
+
+      const btn = document.createElement("button");
+      btn.textContent = p.available ? "Chat with " + (p.label || p.name) : "Unavailable";
+      btn.disabled = !p.available;
+      btn.addEventListener("click", () => {
+        app.sendMessage({
+          role: "user",
+          content: [{
+            type: "text",
+            text: `Use the '${p.name}' provider (${p.model}) for my next chat request.`,
+          }],
+        });
+      });
+
+      card.append(top, model, btn);
+      grid.append(card);
+    }
+
+    const sp = status?.speech;
+    if (sp) {
+      speechEl.innerHTML = "";
+      const pill = document.createElement("span");
+      pill.className = "pill " + (sp.available ? "ok" : "off");
+      pill.textContent = sp.available ? "Azure Speech ready" : "Azure Speech: no key";
+      const label = document.createElement("span");
+      label.textContent = sp.voice ? "voice: " + sp.voice : "";
+      speechEl.append(pill, label);
+    }
+  }
+
+  app.ontoolresult = ({ content }) => {
+    try {
+      const text = content?.find((c) => c.type === "text")?.text ?? "{}";
+      render(JSON.parse(text));
+    } catch (e) {
+      grid.innerHTML = '<div class="empty">Could not read provider status.</div>';
+    }
+  };
+  app.onhostcontextchanged = applyTheme;
+
+  await app.connect();
+  applyTheme();
+})();
+</script>
+</body>
+</html>
