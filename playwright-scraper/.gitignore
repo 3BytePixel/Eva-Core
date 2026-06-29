@@ -1,0 +1,8 @@
+node_modules/
+*.tsbuildinfo
+*.log
+
+# Local scrape outputs (screenshots, etc.)
+*.png
+!docs/*.png
+.DS_Store
