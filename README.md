@@ -47,6 +47,44 @@ curl -s localhost:8000/api/chat -H 'content-type: application/json' -d '{
 
 `provider` is one of `openai`, `xai`, `gemini`, `claude`.
 
+## MCP server
+
+Eva-Core also ships an [MCP](https://modelcontextprotocol.io/) server so hosts
+like Claude Desktop and Claude Code can call the same backends as tools. It
+runs in-process over the `EvaCore` facade and exposes one tool per action:
+
+| Tool             | Description                                            |
+| ---------------- | ------------------------------------------------------ |
+| `list_providers` | Which providers / speech are configured and available  |
+| `chat`           | Chat completion: `{provider, messages, model?, ...}`    |
+| `text_to_speech` | Synthesize text to a WAV file (Azure)                   |
+| `speech_to_text` | Transcribe a WAV file to text (Azure)                   |
+
+Install the extra and run it (stdio transport by default):
+
+```bash
+pip install -e ".[mcp]"
+eva-core-mcp                      # or: python -m eva_core.mcp_server
+```
+
+Register it with an MCP host (e.g. Claude Desktop `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "eva-core": {
+      "command": "eva-core-mcp",
+      "env": { "OPENAI_API_KEY": "sk-..." }
+    }
+  }
+}
+```
+
+The same provider/speech credentials documented below apply; unconfigured
+backends report `available: false` and their tools return a clear error.
+For remote/shared use, set `EVA_MCP_TRANSPORT=http` (with optional
+`EVA_MCP_HOST`, `EVA_MCP_PORT`, `EVA_MCP_PATH`).
+
 ## Configuration
 
 All settings come from environment variables (or a `.env` file). See
