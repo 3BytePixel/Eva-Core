@@ -67,7 +67,7 @@ def test_xai_uses_grok_model(monkeypatch, all_keys_settings):
     monkeypatch.setattr(provider, "_client", lambda: FakeClient())
     result = provider.complete([ChatMessage(role="user", content="hi")])
     assert result.content == "yo from grok"
-    assert captured["model"] == "grok-2-latest"
+    assert captured["model"] == "grok-4.3"
 
 
 def test_anthropic_splits_system(monkeypatch, all_keys_settings):

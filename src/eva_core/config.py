@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # x.ai (Grok) — OpenAI-compatible API
     xai_api_key: str | None = None
-    xai_model: str = "grok-2-latest"
+    xai_model: str = "grok-4.3"
     xai_base_url: str = "https://api.x.ai/v1"
 
     # Google GenAI (Gemini)
